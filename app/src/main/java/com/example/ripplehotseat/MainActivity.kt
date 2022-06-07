@@ -1,5 +1,13 @@
 package com.example.ripplehotseat
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.content.ContentValues.TAG
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
 import android.nfc.Tag
 import android.os.Bundle
 import android.os.RemoteException
@@ -14,14 +22,13 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.TextureView
 import android.widget.TextView
+import androidx.core.app.ActivityCompat
 import com.android.volley.Request
 import com.android.volley.RequestQueue
-import com.android.volley.toolbox.BasicNetwork
-import com.android.volley.toolbox.DiskBasedCache
-import com.android.volley.toolbox.HurlStack
-import com.android.volley.toolbox.StringRequest
+import com.android.volley.toolbox.*
 import com.example.ripplehotseat.databinding.ActivityMainBinding
 import org.altbeacon.beacon.*
+import org.json.JSONObject
 import java.lang.Exception
 import java.util.*
 
@@ -31,6 +38,8 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
     private lateinit var binding: ActivityMainBinding
     private lateinit var beaconManager: BeaconManager
     private lateinit var requestQueue: RequestQueue
+    private lateinit var locationManager: LocationManager
+    private var response: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,23 +53,33 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
         appBarConfiguration = AppBarConfiguration(navController.graph)
         setupActionBarWithNavController(navController, appBarConfiguration)
 
-        binding.fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                .setAction("Action", null).show()
-        }
+        checkForPermissions()
 
         beaconManager = BeaconManager.getInstanceForApplication(this)
 
-        beaconManager.beaconParsers.add(BeaconParser().setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24,d:25-25"))
+        beaconManager.beaconParsers.add(BeaconParser().setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"))
 
         beaconManager.bind(this)
 
         requestQueue = RequestQueue(DiskBasedCache(cacheDir,1024*1024), BasicNetwork((HurlStack()))).apply { start() }
-        val request = StringRequest(Request.Method.GET, "https://jsonplaceholder.typicode.com/users", {
-            response -> Log.i("TAG", response)
-        }, { error -> Log.e("resError", error.toString())})
+//        val request = StringRequest(Request.Method.GET, "https://jsonplaceholder.typicode.com/users", {
+//            response -> Log.i("TAG", response)
+//        }, { error -> Log.e("resError", error.toString())})
+//        requestQueue.add(request)
+    }
+
+    fun sendName(name: String){
+        val jsonObject = JSONObject()
+        jsonObject.put("Name", name)
+        val request = JsonObjectRequest(Request.Method.POST, "", jsonObject, {
+            response -> Log.i("Git","Super")
+            this.response = response.getString("UUID")
+            //sprawdzić co się stanie
+            beaconManager.bind(this)
+        }, {
+            error -> Log.e("Error", "Cos nie tak")
+        })
         requestQueue.add(request)
-        findViewById<TextView>(R.id.textview_first).text = "cos"
     }
 
     override fun onDestroy() {
@@ -92,8 +111,8 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
 
     override fun onBeaconServiceConnect() {
         val TAG = "BeaconsEverywhere"
-//        val region: Region = Region("MyBeacons", Identifier.parse("F0018B9B-7509-4C31-A905-1A27D39C003C"), null, null)
-        val region: Region = Region("MyBeacons", null, null, null)
+//        val region: Region = Region("MyBeacons", Identifier.parse(response!!), null, null)
+        val region: Region = Region("MyBeac", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, null)
         beaconManager.setMonitorNotifier(object: MonitorNotifier{
             override fun didEnterRegion(region: Region) {
                 try {
@@ -125,20 +144,93 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
             }
         })
         try {
-//            beaconManager.getRegionViewModel(region).rangedBeacons.observe(this, rangingObserver)
-//            beaconManager.startRangingBeacons(region)
-//            beaconManager.reg
             beaconManager.startMonitoringBeaconsInRegion(region)
         }catch (e: RemoteException){
             e.printStackTrace()
             Log.e("StartError", e.printStackTrace().toString())
         }
     }
-//    val rangingObserver = { beacons: Collection<Beacon> ->
-//        Log.d("Count", "Ranged: ${beacons.count()} beacons")
-//        for (beacon: Beacon in beacons) {
-//            Log.d("Meters", "$beacon about ${beacon.distance} meters away")
-//        }
-//    }
+
+    private val locationListener: LocationListener = object : LocationListener{
+        override fun onLocationChanged(location: Location) {
+
+        }
+
+    }
+
+    private fun checkForPermissions() {
+        locationManager = getSystemService(LOCATION_SERVICE) as LocationManager
+        if (ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.ACCESS_FINE_LOCATION) &&
+                ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.ACCESS_COARSE_LOCATION)) {
+
+                AlertDialog.Builder(this)
+                    .setTitle("Wymagana zgoda na lokalizacje.")
+                    .setMessage("Ta aplikacja wymaga zgody na przetwarzanie lokalizacji.")
+                    .setPositiveButton(
+                        "OK"
+                    ) { _ , _ ->
+                        ActivityCompat.requestPermissions(this,
+                            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),99)
+                    }
+                    .create()
+                    .show()
+            }
+            else {
+                ActivityCompat.requestPermissions(this,
+                    arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),99)
+            }
+        }
+        else {
+            locationManager.requestLocationUpdates(
+                LocationManager.NETWORK_PROVIDER,
+                0,
+                0F,
+                locationListener
+            )
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        Log.i("t","per")
+
+        when (requestCode) {
+            99 -> {
+                if(grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED && grantResults[1] == PackageManager.PERMISSION_GRANTED) {
+                    locationManager.requestLocationUpdates(
+                        LocationManager.NETWORK_PROVIDER,
+                        0,
+                        0F,
+                        locationListener
+                    )
+                }
+                else {
+                    AlertDialog.Builder(this)
+                        .setTitle("Brak zgody")
+                        .setMessage("Ta aplikacja wymaga przetwarzania lokalizacji.")
+                        .setPositiveButton(
+                            "OK"
+                        ) { _ , _ ->
+
+                        }
+                        .create()
+                        .show()
+                }
+            }
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
 
 }

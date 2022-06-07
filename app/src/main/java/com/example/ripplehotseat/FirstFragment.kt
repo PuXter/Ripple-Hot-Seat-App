@@ -25,6 +25,7 @@ class FirstFragment : Fragment() {
     ): View? {
 
         _binding = FragmentFirstBinding.inflate(inflater, container, false)
+
         return binding.root
 
     }
@@ -32,9 +33,13 @@ class FirstFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.buttonFirst.setOnClickListener {
-            findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
+        val theButton = binding.buttonFirst
+        theButton.setOnClickListener {
+            val theText = binding.editTextTextPersonName
+            val text = theText.text.toString()
+            (activity as MainActivity).sendName(text)
         }
+
     }
 
     override fun onDestroyView() {
