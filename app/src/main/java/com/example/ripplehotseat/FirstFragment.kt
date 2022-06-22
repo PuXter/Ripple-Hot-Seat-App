@@ -25,9 +25,7 @@ class FirstFragment : Fragment() {
     ): View? {
 
         _binding = FragmentFirstBinding.inflate(inflater, container, false)
-
         return binding.root
-
     }
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
@@ -37,9 +35,12 @@ class FirstFragment : Fragment() {
         theButton.setOnClickListener {
             val theText = binding.editTextTextPersonName
             val text = theText.text.toString()
-            (activity as MainActivity).sendName(text)
+            val password = binding.editTextTextPassword
+            val pass = password.text.toString()
+            if((activity as MainActivity).sendUser(text, pass)){
+                findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
+            }
         }
-
     }
 
     override fun onDestroyView() {

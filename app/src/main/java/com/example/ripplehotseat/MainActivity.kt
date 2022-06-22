@@ -22,6 +22,7 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.TextureView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.app.ActivityCompat
 import com.android.volley.Request
 import com.android.volley.RequestQueue
@@ -31,6 +32,7 @@ import org.altbeacon.beacon.*
 import org.json.JSONObject
 import java.lang.Exception
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity(), BeaconConsumer{
 
@@ -39,6 +41,8 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
     private lateinit var beaconManager: BeaconManager
     private lateinit var requestQueue: RequestQueue
     private lateinit var locationManager: LocationManager
+    private var uname: String? = null
+    private var upass: String? = null
     private var response: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -57,29 +61,60 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
 
         beaconManager = BeaconManager.getInstanceForApplication(this)
 
-        beaconManager.beaconParsers.add(BeaconParser().setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"))
-
-        beaconManager.bind(this)
+//        beaconManager.beaconParsers.add(BeaconParser().setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"))
+//
+//        beaconManager.bind(this)
 
         requestQueue = RequestQueue(DiskBasedCache(cacheDir,1024*1024), BasicNetwork((HurlStack()))).apply { start() }
-//        val request = StringRequest(Request.Method.GET, "https://jsonplaceholder.typicode.com/users", {
-//            response -> Log.i("TAG", response)
-//        }, { error -> Log.e("resError", error.toString())})
-//        requestQueue.add(request)
     }
 
-    fun sendName(name: String){
+    fun sendUser(name: String, password: String):Boolean{
         val jsonObject = JSONObject()
         jsonObject.put("Name", name)
-        val request = JsonObjectRequest(Request.Method.POST, "", jsonObject, {
-            response -> Log.i("Git","Super")
+        jsonObject.put( "Password", password)
+        jsonObject.put("Login", true)
+        val future = RequestFuture.newFuture<JSONObject>()
+        val request = JsonObjectRequest(Request.Method.POST, "https://ripple-hot-seat-backend-app.herokuapp.com", jsonObject, future, future)
+        requestQueue.add(request)
+        return try {
+            val response = future.get(3,TimeUnit.SECONDS)
             this.response = response.getString("UUID")
             //sprawdzić co się stanie
             beaconManager.bind(this)
-        }, {
-            error -> Log.e("Error", "Cos nie tak")
-        })
+            uname = name
+            upass = password
+            true
+        }catch (e: Exception){
+            Log.e("Error", "Cos nie tak")
+            val text = "Blad podczas logowania!"
+            val duration = Toast.LENGTH_SHORT
+            val toast = Toast.makeText(applicationContext, text, duration)
+            toast.show()
+            false
+        }
+    }
+
+    fun logout():Boolean{
+        val jsonObject = JSONObject()
+        jsonObject.put("Name", uname)
+        jsonObject.put( "Password", upass)
+        jsonObject.put("Login", false)
+        val future = RequestFuture.newFuture<JSONObject>()
+        val request = JsonObjectRequest(Request.Method.POST, "https://ripple-hot-seat-backend-app.herokuapp.com", jsonObject, future, future)
         requestQueue.add(request)
+        return try {
+            val response = future.get(3,TimeUnit.SECONDS)
+            this.response = response.getString("Login")
+            //sprawdzić co się stanie
+            true
+        }catch (e: Exception){
+            Log.e("Error", "Zostales z nami")
+            val text = "Blad podczas wylogowywania!"
+            val duration = Toast.LENGTH_SHORT
+            val toast = Toast.makeText(applicationContext, text, duration)
+            toast.show()
+            false
+        }
     }
 
     override fun onDestroy() {
@@ -111,8 +146,8 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
 
     override fun onBeaconServiceConnect() {
         val TAG = "BeaconsEverywhere"
-//        val region: Region = Region("MyBeacons", Identifier.parse(response!!), null, null)
-        val region: Region = Region("MyBeac", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, null)
+        val region: Region = Region("MyBeacons", Identifier.parse(response!!), null, null)
+//        val region: Region = Region("MyBeac", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, null)
         beaconManager.setMonitorNotifier(object: MonitorNotifier{
             override fun didEnterRegion(region: Region) {
                 try {
