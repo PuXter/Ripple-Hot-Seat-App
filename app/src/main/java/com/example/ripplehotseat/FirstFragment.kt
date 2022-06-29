@@ -38,6 +38,7 @@ class FirstFragment : Fragment() {
             val password = binding.editTextTextPassword
             val pass = password.text.toString()
             if((activity as MainActivity).sendUser(text, pass)){
+                (activity as MainActivity).getUserId()
                 findNavController().navigate(R.id.action_FirstFragment_to_SecondFragment)
             }
         }

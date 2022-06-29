@@ -28,11 +28,16 @@ import com.android.volley.Request
 import com.android.volley.RequestQueue
 import com.android.volley.toolbox.*
 import com.example.ripplehotseat.databinding.ActivityMainBinding
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.altbeacon.beacon.*
 import org.json.JSONObject
 import java.lang.Exception
+import java.net.URL
 import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
+import kotlin.text.StringBuilder
 
 class MainActivity : AppCompatActivity(), BeaconConsumer{
 
@@ -42,8 +47,9 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
     private lateinit var requestQueue: RequestQueue
     private lateinit var locationManager: LocationManager
     private var uname: String? = null
-    private var upass: String? = null
+    private var userId: String? = null
     private var response: String? = null
+    private var token: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,61 +67,112 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
 
         beaconManager = BeaconManager.getInstanceForApplication(this)
 
-//        beaconManager.beaconParsers.add(BeaconParser().setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"))
-//
+        beaconManager.beaconParsers.add(BeaconParser().setBeaconLayout("m:2-3=0215,i:4-19,i:20-21,i:22-23,p:24-24"))
+
 //        beaconManager.bind(this)
 
         requestQueue = RequestQueue(DiskBasedCache(cacheDir,1024*1024), BasicNetwork((HurlStack()))).apply { start() }
     }
 
-    fun sendUser(name: String, password: String):Boolean{
-        val jsonObject = JSONObject()
-        jsonObject.put("Name", name)
-        jsonObject.put( "Password", password)
-        jsonObject.put("Login", true)
-        val future = RequestFuture.newFuture<JSONObject>()
-        val request = JsonObjectRequest(Request.Method.POST, "https://ripple-hot-seat-backend-app.herokuapp.com", jsonObject, future, future)
-        requestQueue.add(request)
-        return try {
-            val response = future.get(3,TimeUnit.SECONDS)
-            this.response = response.getString("UUID")
-            //sprawdzić co się stanie
+    fun sendUser(name: String, password: String): Boolean {
+        var res = false
+        val thread = Thread {
+            try {
+                URL("https://ripple-hot-seat-backend-app.herokuapp.com/login?username=$name&password=$password")
+                    .openStream()
+                    .bufferedReader()
+                    .use {
+                        response = it.readText()
+                        token = response
+                        println(response)
+                        uname = name
+                        res = true
+                    }
+            } catch (e: Exception) {
+                println("Coś nie tak")
+                res = false
+            }
+        }
+        thread.start()
+        thread.join()
+        if (res)
             beaconManager.bind(this)
-            uname = name
-            upass = password
-            true
-        }catch (e: Exception){
-            Log.e("Error", "Cos nie tak")
+        else {
             val text = "Blad podczas logowania!"
             val duration = Toast.LENGTH_SHORT
             val toast = Toast.makeText(applicationContext, text, duration)
             toast.show()
-            false
         }
+        return res
     }
 
-    fun logout():Boolean{
-        val jsonObject = JSONObject()
-        jsonObject.put("Name", uname)
-        jsonObject.put( "Password", upass)
-        jsonObject.put("Login", false)
-        val future = RequestFuture.newFuture<JSONObject>()
-        val request = JsonObjectRequest(Request.Method.POST, "https://ripple-hot-seat-backend-app.herokuapp.com", jsonObject, future, future)
-        requestQueue.add(request)
-        return try {
-            val response = future.get(3,TimeUnit.SECONDS)
-            this.response = response.getString("Login")
-            //sprawdzić co się stanie
-            true
-        }catch (e: Exception){
-            Log.e("Error", "Zostales z nami")
-            val text = "Blad podczas wylogowywania!"
-            val duration = Toast.LENGTH_SHORT
-            val toast = Toast.makeText(applicationContext, text, duration)
-            toast.show()
-            false
-        }
+    fun logout(){
+        uname = null
+        userId = null
+        token = null
     }
+
+    fun getUserId(){
+        val thread = Thread {
+            try {
+                URL("https://ripple-hot-seat-backend-app.herokuapp.com/users/byUsername/$uname")
+                    .openStream()
+                    .bufferedReader()
+                    .use {
+                        response = it.readText()
+                        println(response)
+//                        userId = name
+                    }
+//                params["Authorization"] = token
+            } catch (e: Exception) {
+                println("Coś nie tak")
+            }
+//            try {
+//                URL("https://ripple-hot-seat-backend-app.herokuapp.com/users/byUsername/$uname")
+//                    .openStream()
+//                    .bufferedReader()
+//                    .use {
+//                        val sb = StringBuilder()
+//                        while ((it.readLine().also { response = it }) != null){
+//                            sb.append(response)
+//                        }
+//                        val jsonObject = JSONObject(sb.toString())
+//                        userId = jsonObject.getString("userId")
+//                    }
+//            } catch (e: Exception) {
+//                println("Coś nie tak")
+//            }
+        }
+        thread.start()
+        thread.join()
+        println(userId)
+    }
+
+    fun reserve(){
+
+    }
+
+//    fun logout():Boolean{
+//        val jsonObject = JSONObject()
+//        jsonObject.put("Name", uname)
+//        jsonObject.put( "Password", upass)
+//        val future = RequestFuture.newFuture<JSONObject>()
+//        val request = JsonObjectRequest(Request.Method.POST, "https://ripple-hot-seat-backend-app.herokuapp.com", jsonObject, future, future)
+//        requestQueue.add(request)
+//        return try {
+//            val response = future.get(3,TimeUnit.SECONDS)
+//            this.response = response.getString("Login")
+//            //sprawdzić co się stanie
+//            true
+//        }catch (e: Exception){
+//            Log.e("Error", "Zostales z nami")
+//            val text = "Blad podczas wylogowywania!"
+//            val duration = Toast.LENGTH_SHORT
+//            val toast = Toast.makeText(applicationContext, text, duration)
+//            toast.show()
+//            false
+//        }
+//    }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -146,8 +203,8 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
 
     override fun onBeaconServiceConnect() {
         val TAG = "BeaconsEverywhere"
-        val region: Region = Region("MyBeacons", Identifier.parse(response!!), null, null)
-//        val region: Region = Region("MyBeac", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, null)
+//        val region: Region = Region("MyBeacons", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, Identifier.parse("1"))
+        val region: Region = Region("MyBeac", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, null)
         beaconManager.setMonitorNotifier(object: MonitorNotifier{
             override fun didEnterRegion(region: Region) {
                 try {

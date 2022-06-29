@@ -33,9 +33,8 @@ class SecondFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.button.setOnClickListener {
-            if((activity as MainActivity).logout()){
-                findNavController().navigate(R.id.action_SecondFragment_to_FirstFragment)
-            }
+            (activity as MainActivity).logout()
+            findNavController().navigate(R.id.action_SecondFragment_to_FirstFragment)
         }
     }
 
