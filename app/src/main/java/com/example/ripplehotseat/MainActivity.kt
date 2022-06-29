@@ -32,10 +32,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.altbeacon.beacon.*
 import org.json.JSONObject
-import java.lang.Exception
+import java.net.HttpURLConnection
 import java.net.URL
 import java.util.*
 import java.util.concurrent.TimeUnit
+import kotlin.Exception
 import kotlin.concurrent.thread
 import kotlin.text.StringBuilder
 
@@ -106,53 +107,40 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
         return res
     }
 
-    fun logout(){
+    fun logout() {
         uname = null
         userId = null
         token = null
     }
 
-    fun getUserId(){
+    fun getUserId() {
         val thread = Thread {
+            var connection: HttpURLConnection? = null
             try {
-                URL("https://ripple-hot-seat-backend-app.herokuapp.com/users/byUsername/$uname")
-                    .openStream()
-                    .bufferedReader()
-                    .use {
-                        response = it.readText()
-                        println(response)
-//                        userId = name
-                    }
-//                params["Authorization"] = token
-            } catch (e: Exception) {
-                println("Coś nie tak")
+                connection = URL("https://ripple-hot-seat-backend-app.herokuapp.com/users/byUsername/$uname")
+                    .openConnection() as HttpURLConnection
+                connection.setRequestProperty("Authorization", "Bearer $token")
+                val response = connection.inputStream.bufferedReader().readText()
+                val responseJson = JSONObject(response)
+                println(responseJson)
             }
-//            try {
-//                URL("https://ripple-hot-seat-backend-app.herokuapp.com/users/byUsername/$uname")
-//                    .openStream()
-//                    .bufferedReader()
-//                    .use {
-//                        val sb = StringBuilder()
-//                        while ((it.readLine().also { response = it }) != null){
-//                            sb.append(response)
-//                        }
-//                        val jsonObject = JSONObject(sb.toString())
-//                        userId = jsonObject.getString("userId")
-//                    }
-//            } catch (e: Exception) {
-//                println("Coś nie tak")
-//            }
+            catch (e: Exception) {
+                e.printStackTrace()
+            }
+            finally {
+                connection?.disconnect()
+            }
         }
         thread.start()
         thread.join()
         println(userId)
     }
 
-    fun reserve(){
+    fun reserve() {
 
     }
 
-//    fun logout():Boolean{
+//    fun logout():Boolean {
 //        val jsonObject = JSONObject()
 //        jsonObject.put("Name", uname)
 //        jsonObject.put( "Password", upass)
