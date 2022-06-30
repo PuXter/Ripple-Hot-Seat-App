@@ -159,7 +159,7 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
     @RequiresApi(Build.VERSION_CODES.O)
     fun reserve() {
         var res = false
-        val current = LocalDateTime.now().minusHours(2)
+        val current = LocalDateTime.now()
         val startTime = current.toString()
         val jsonObject = JSONObject()
         jsonObject.put("userId", userId)
