@@ -9,6 +9,7 @@ import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
 import android.nfc.Tag
+import android.os.Build
 import android.os.Bundle
 import android.os.RemoteException
 import android.util.Log
@@ -23,6 +24,7 @@ import android.view.MenuItem
 import android.view.TextureView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import com.android.volley.Request
 import com.android.volley.RequestQueue
@@ -32,8 +34,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.altbeacon.beacon.*
 import org.json.JSONObject
+import java.io.BufferedWriter
+import java.io.OutputStream
+import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.LocalDateTime
 import java.util.*
 import java.util.concurrent.TimeUnit
 import kotlin.Exception
@@ -49,8 +55,10 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
     private lateinit var locationManager: LocationManager
     private var uname: String? = null
     private var userId: String? = null
-    private var response: String? = null
     private var token: String? = null
+//    private var beaconId: Int? = null
+    private var beaconId: Int? = 2
+    private var reservationId: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,19 +86,18 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
     fun sendUser(name: String, password: String): Boolean {
         var res = false
         val thread = Thread {
+            var connection: HttpURLConnection? = null
             try {
-                URL("https://ripple-hot-seat-backend-app.herokuapp.com/login?username=$name&password=$password")
-                    .openStream()
-                    .bufferedReader()
-                    .use {
-                        response = it.readText()
-                        token = response
-                        println(response)
-                        uname = name
-                        res = true
-                    }
+                connection = URL("https://ripple-hot-seat-backend-app.herokuapp.com/login?username=$name&password=$password")
+                    .openConnection() as HttpURLConnection
+                val response = connection.inputStream.bufferedReader().readText()
+                token = response
+                uname = name
+                res = true
+                if (connection.responseCode != 200){
+                    res = false
+                }
             } catch (e: Exception) {
-                println("Coś nie tak")
                 res = false
             }
         }
@@ -110,10 +117,13 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
     fun logout() {
         uname = null
         userId = null
+        delete()
+        beaconManager.unbind(this)
         token = null
     }
 
     fun getUserId() {
+        var res = false
         val thread = Thread {
             var connection: HttpURLConnection? = null
             try {
@@ -122,10 +132,15 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
                 connection.setRequestProperty("Authorization", "Bearer $token")
                 val response = connection.inputStream.bufferedReader().readText()
                 val responseJson = JSONObject(response)
-                println(responseJson)
+                userId = responseJson.getString("id")
+                res = true
+                if (connection.responseCode != 200){
+                    res = false
+                }
             }
             catch (e: Exception) {
                 e.printStackTrace()
+                res = false
             }
             finally {
                 connection?.disconnect()
@@ -133,34 +148,109 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
         }
         thread.start()
         thread.join()
-        println(userId)
+        if (!res) {
+            val text = "Blad pobierania uzytkownika!"
+            val duration = Toast.LENGTH_SHORT
+            val toast = Toast.makeText(applicationContext, text, duration)
+            toast.show()
+        }
     }
 
+    @RequiresApi(Build.VERSION_CODES.O)
     fun reserve() {
+        var res = false
+        val current = LocalDateTime.now().minusHours(2)
+        val startTime = current.toString()
+        val jsonObject = JSONObject()
+        jsonObject.put("userId", userId)
+        jsonObject.put("startTime", "$startTime+00:00")
+        jsonObject.put("isPermanent", true)
+        val message = jsonObject.toString()
+        val thread = Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = URL("https://ripple-hot-seat-backend-app.herokuapp.com/reservations/save/byBeaconId/$beaconId")
+                    .openConnection() as HttpURLConnection
+                connection.setRequestProperty("Authorization", "Bearer $token")
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.doOutput = true
+                connection.requestMethod = "POST"
 
+                val os: OutputStream = connection.outputStream
+                val writer = BufferedWriter(OutputStreamWriter(os, "UTF-8"))
+                writer.write(message)
+                writer.flush()
+                writer.close()
+                os.close()
+                val response = connection.inputStream.bufferedReader().readText()
+                reservationId = response
+                res = true
+                if (connection.responseCode != 200){
+                    res = false
+                }
+            }
+            catch (e: Exception) {
+                e.printStackTrace()
+                res = false
+            }
+            finally {
+                connection?.disconnect()
+            }
+        }
+        thread.start()
+        thread.join()
+        if (res) {
+            val text = "Udana rezerwacja! Zarezerwowano biurko $beaconId"
+            val duration = Toast.LENGTH_SHORT
+            val toast = Toast.makeText(applicationContext, text, duration)
+            toast.show()
+        }
+        else {
+            val text = "Blad rezerwacji!"
+            val duration = Toast.LENGTH_SHORT
+            val toast = Toast.makeText(applicationContext, text, duration)
+            toast.show()
+        }
     }
 
-//    fun logout():Boolean {
-//        val jsonObject = JSONObject()
-//        jsonObject.put("Name", uname)
-//        jsonObject.put( "Password", upass)
-//        val future = RequestFuture.newFuture<JSONObject>()
-//        val request = JsonObjectRequest(Request.Method.POST, "https://ripple-hot-seat-backend-app.herokuapp.com", jsonObject, future, future)
-//        requestQueue.add(request)
-//        return try {
-//            val response = future.get(3,TimeUnit.SECONDS)
-//            this.response = response.getString("Login")
-//            //sprawdzić co się stanie
-//            true
-//        }catch (e: Exception){
-//            Log.e("Error", "Zostales z nami")
-//            val text = "Blad podczas wylogowywania!"
-//            val duration = Toast.LENGTH_SHORT
-//            val toast = Toast.makeText(applicationContext, text, duration)
-//            toast.show()
-//            false
-//        }
-//    }
+    fun delete() {
+        var res = false
+        val thread = Thread {
+            var connection: HttpURLConnection? = null
+            try {
+                connection = URL("https://ripple-hot-seat-backend-app.herokuapp.com/reservations/delete/$reservationId")
+                    .openConnection() as HttpURLConnection
+                connection.setRequestProperty("Authorization", "Bearer $token")
+                connection.requestMethod = "DELETE"
+                res = true
+                if (connection.responseCode != 200){
+                    res = false
+                }
+            }
+            catch (e: Exception) {
+                e.printStackTrace()
+                res = false
+            }
+            finally {
+                connection?.disconnect()
+            }
+        }
+        thread.start()
+        thread.join()
+        reservationId = null
+        if (res) {
+            val text = "Usunieto rezerwacje!"
+            val duration = Toast.LENGTH_SHORT
+            val toast = Toast.makeText(applicationContext, text, duration)
+            toast.show()
+        }
+        else {
+            val text = "Blad usuwania rezerwacji!"
+            val duration = Toast.LENGTH_SHORT
+            val toast = Toast.makeText(applicationContext, text, duration)
+            toast.show()
+        }
+    }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -192,7 +282,7 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
     override fun onBeaconServiceConnect() {
         val TAG = "BeaconsEverywhere"
 //        val region: Region = Region("MyBeacons", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, Identifier.parse("1"))
-        val region: Region = Region("MyBeac", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, null)
+        val region = Region("MyBeac", Identifier.parse("d4070339-6da4-4e50-a375-bade13be6daa"), null, null)
         beaconManager.setMonitorNotifier(object: MonitorNotifier{
             override fun didEnterRegion(region: Region) {
                 try {
@@ -220,6 +310,14 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
             override fun didRangeBeaconsInRegion(beacons: Collection<Beacon>, region: Region) {
                 for (oneBeacon: Beacon in beacons){
                     Log.d(TAG, "distance: " + oneBeacon.distance + " id: " + oneBeacon.id1 + "/" + oneBeacon.id2 + "/" + oneBeacon.id3)
+                    if (oneBeacon.distance <= 0.5){
+                        beaconId = oneBeacon.id3.toInt()
+                    }
+                    else {
+                        if (oneBeacon.id3.toInt() == beaconId){
+                            beaconId = null
+                        }
+                    }
                 }
             }
         })
@@ -235,7 +333,6 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
         override fun onLocationChanged(location: Location) {
 
         }
-
     }
 
     private fun checkForPermissions() {
@@ -312,5 +409,8 @@ class MainActivity : AppCompatActivity(), BeaconConsumer{
         }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
+
+
+
 
 }
